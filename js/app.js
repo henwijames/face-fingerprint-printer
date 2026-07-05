@@ -295,33 +295,46 @@ async function scanUsbDevices() {
 }
 
 async function loadUsbDevices() {
-  if (!navigator.usb) return;
-  try {
-    const devices = await navigator.usb.getDevices();
-    const tableBody = document.querySelector('#usb-devices-table tbody');
-    tableBody.innerHTML = '';
-    
-    if (devices.length === 0) {
-      tableBody.innerHTML = `<tr><td colspan="5" class="empty-table" style="padding: 1.5rem;">No USB devices paired. Click scan to search.</td></tr>`;
-      return;
+  const tableBody = document.querySelector('#usb-devices-table tbody');
+  tableBody.innerHTML = '';
+  
+  let devices = [];
+  if (navigator.usb) {
+    try {
+      devices = await navigator.usb.getDevices();
+    } catch (error) {
+      console.error('Error listing USB devices:', error);
     }
-
-    devices.forEach((device, idx) => {
-      tableBody.innerHTML += `
-        <tr>
-          <td><strong>${device.productName || 'Unknown USB Device'}</strong></td>
-          <td style="font-family: var(--font-mono);">0x${device.vendorId.toString(16).toUpperCase().padStart(4, '0')}</td>
-          <td style="font-family: var(--font-mono);">0x${device.productId.toString(16).toUpperCase().padStart(4, '0')}</td>
-          <td>${device.manufacturerName || 'N/A'}</td>
-          <td>
-            <button class="btn btn-small btn-cyan" onclick="testPrintUsb(${idx})">🖨️ Test Print</button>
-          </td>
-        </tr>
-      `;
-    });
-  } catch (error) {
-    console.error('Error listing USB devices:', error);
   }
+
+  // Virtual Mock USB Printer for demonstration
+  const mockDevice = {
+    productName: 'Mock USB Thermal POS58',
+    vendorId: 0x0483,
+    productId: 0x5740,
+    manufacturerName: 'Mock Hardware Corp.',
+    isMock: true
+  };
+
+  const allDevices = [mockDevice, ...devices];
+
+  allDevices.forEach((device, idx) => {
+    const isMock = device.isMock;
+    tableBody.innerHTML += `
+      <tr>
+        <td>
+          <strong>${device.productName || 'Unknown USB Device'}</strong> 
+          ${isMock ? '<span class="badge" style="background: rgba(6, 182, 212, 0.15); color: var(--cyan); border: 1px solid rgba(6, 182, 212, 0.2);">VIRTUAL</span>' : ''}
+        </td>
+        <td style="font-family: var(--font-mono);">0x${device.vendorId.toString(16).toUpperCase().padStart(4, '0')}</td>
+        <td style="font-family: var(--font-mono);">0x${device.productId.toString(16).toUpperCase().padStart(4, '0')}</td>
+        <td>${device.manufacturerName || 'N/A'}</td>
+        <td>
+          <button class="btn btn-small btn-cyan" onclick="${isMock ? 'testPrintMockUsb()' : `testPrintUsb(${idx - 1})`}">🖨️ Test Print</button>
+        </td>
+      </tr>
+    `;
+  });
 }
 
 // Web Serial Printer Port Functions
@@ -349,36 +362,44 @@ async function scanSerialPorts() {
 }
 
 async function loadSerialPorts() {
-  if (!navigator.serial) return;
-  try {
-    const ports = await navigator.serial.getPorts();
-    const tableBody = document.querySelector('#serial-ports-table tbody');
-    tableBody.innerHTML = '';
-    
-    if (ports.length === 0) {
-      tableBody.innerHTML = `<tr><td colspan="5" class="empty-table" style="padding: 1.5rem;">No serial ports paired. Click scan to search.</td></tr>`;
-      return;
+  const tableBody = document.querySelector('#serial-ports-table tbody');
+  tableBody.innerHTML = '';
+  
+  let ports = [];
+  if (navigator.serial) {
+    try {
+      ports = await navigator.serial.getPorts();
+    } catch (error) {
+      console.error('Error listing Serial ports:', error);
     }
-
-    ports.forEach((port, index) => {
-      const info = port.getInfo();
-      const vendorId = info.usbVendorId ? `0x${info.usbVendorId.toString(16).toUpperCase().padStart(4, '0')}` : 'N/A';
-      const productId = info.usbProductId ? `0x${info.usbProductId.toString(16).toUpperCase().padStart(4, '0')}` : 'N/A';
-      tableBody.innerHTML += `
-        <tr>
-          <td style="font-family: var(--font-mono);">Serial Port #${index + 1}</td>
-          <td style="font-family: var(--font-mono);">${vendorId}</td>
-          <td style="font-family: var(--font-mono);">${productId}</td>
-          <td><span class="badge badge-supported">Paired</span></td>
-          <td>
-            <button class="btn btn-small btn-violet" onclick="testPrintSerial(${index})">🖨️ Test Print</button>
-          </td>
-        </tr>
-      `;
-    });
-  } catch (error) {
-    console.error('Error listing Serial ports:', error);
   }
+
+  // Virtual Mock Serial COM Port for demonstration
+  const mockPort = {
+    usbVendorId: 0x067B,
+    usbProductId: 0x2303,
+    isMock: true
+  };
+
+  const allPorts = [mockPort, ...ports];
+
+  allPorts.forEach((port, idx) => {
+    const isMock = port.isMock;
+    const vendorId = port.usbVendorId ? `0x${port.usbVendorId.toString(16).toUpperCase().padStart(4, '0')}` : 'N/A';
+    const productId = port.usbProductId ? `0x${port.usbProductId.toString(16).toUpperCase().padStart(4, '0')}` : 'N/A';
+    
+    tableBody.innerHTML += `
+      <tr>
+        <td style="font-family: var(--font-mono);">${isMock ? 'Virtual Serial COM3' : `Serial Port #${idx}`}</td>
+        <td style="font-family: var(--font-mono);">${vendorId}</td>
+        <td style="font-family: var(--font-mono);">${productId}</td>
+        <td><span class="badge badge-supported">${isMock ? 'Simulated' : 'Paired'}</span></td>
+        <td>
+          <button class="btn btn-small btn-violet" onclick="${isMock ? 'testPrintMockSerial()' : `testPrintSerial(${idx - 1})`}">🖨️ Test Print</button>
+        </td>
+      </tr>
+    `;
+  });
 }
 
 // ESC/POS Receipt Command Byte Builder
@@ -523,6 +544,54 @@ async function testPrintSerial(portIndex) {
   } catch (error) {
     log(`[SERIAL-ERROR] Web Serial printing failed: ${error.message}`, 'error');
   }
+}
+
+// Simulated print handlers for virtual devices
+function testPrintMockUsb() {
+  log('[MOCK-USB] Starting print spool simulation for Virtual POS58...', 'info');
+  log('[MOCK-USB] Connecting to Virtual USB device...', 'system');
+  log('[MOCK-USB] Claiming Interface 0, Bulk OUT Endpoint 1...', 'system');
+  
+  const testBytes = getEscPosTestData();
+  log(`[MOCK-USB] Sending ESC/POS print command stream (${testBytes.length} bytes)...`, 'system', {
+    rawBytesHex: "1B 40 1B 61 01 1D 21 11 ... 1D 56 42 00",
+    decodedCommands: [
+      "Initialize printer (ESC @)",
+      "Select justification: center (ESC a 1)",
+      "Set double size character mode (GS ! 0x11)",
+      "Print title 'TEST PRINT\\n'",
+      "Set regular size character mode (GS ! 0x00)",
+      "Select justification: left (ESC a 0)",
+      "Print receipt metadata body",
+      "Feed paper and perform cut (GS V 66 0)"
+    ]
+  });
+  
+  setTimeout(() => {
+    log('[MOCK-USB] Print commands flushed. Releasing interface...', 'system');
+    log('[MOCK-USB-SUCCESS] Simulated receipt print job completed successfully!', 'success');
+  }, 1000);
+}
+
+function testPrintMockSerial() {
+  log('[MOCK-SERIAL] Starting print spool simulation on COM3 (9600 Baud)...', 'info');
+  log('[MOCK-SERIAL] Opening Virtual Port COM3...', 'system');
+  
+  const testBytes = getEscPosTestData();
+  log(`[MOCK-SERIAL] Writing ESC/POS print bytes (${testBytes.length} bytes)...`, 'system', {
+    rawBytesHex: "1B 40 1B 61 01 1D 21 11 ... 1D 56 42 00",
+    portParams: {
+      baudRate: 9600,
+      dataBits: 8,
+      stopBits: 1,
+      parity: "none"
+    }
+  });
+  
+  setTimeout(() => {
+    log('[MOCK-SERIAL] Closing Virtual Serial Port COM3...', 'system');
+    log('[MOCK-SERIAL-SUCCESS] Simulated receipt print job completed successfully!', 'success');
+  }, 1000);
 }
 
 // WebAuthn Registration
