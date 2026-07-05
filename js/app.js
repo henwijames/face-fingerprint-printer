@@ -302,17 +302,20 @@ async function loadUsbDevices() {
     tableBody.innerHTML = '';
     
     if (devices.length === 0) {
-      tableBody.innerHTML = `<tr><td colspan="4" class="empty-table" style="padding: 1.5rem;">No USB devices paired. Click scan to search.</td></tr>`;
+      tableBody.innerHTML = `<tr><td colspan="5" class="empty-table" style="padding: 1.5rem;">No USB devices paired. Click scan to search.</td></tr>`;
       return;
     }
 
-    devices.forEach(device => {
+    devices.forEach((device, idx) => {
       tableBody.innerHTML += `
         <tr>
           <td><strong>${device.productName || 'Unknown USB Device'}</strong></td>
           <td style="font-family: var(--font-mono);">0x${device.vendorId.toString(16).toUpperCase().padStart(4, '0')}</td>
           <td style="font-family: var(--font-mono);">0x${device.productId.toString(16).toUpperCase().padStart(4, '0')}</td>
           <td>${device.manufacturerName || 'N/A'}</td>
+          <td>
+            <button class="btn btn-small btn-cyan" onclick="testPrintUsb(${idx})">🖨️ Test Print</button>
+          </td>
         </tr>
       `;
     });
@@ -353,7 +356,7 @@ async function loadSerialPorts() {
     tableBody.innerHTML = '';
     
     if (ports.length === 0) {
-      tableBody.innerHTML = `<tr><td colspan="4" class="empty-table" style="padding: 1.5rem;">No serial ports paired. Click scan to search.</td></tr>`;
+      tableBody.innerHTML = `<tr><td colspan="5" class="empty-table" style="padding: 1.5rem;">No serial ports paired. Click scan to search.</td></tr>`;
       return;
     }
 
@@ -367,11 +370,158 @@ async function loadSerialPorts() {
           <td style="font-family: var(--font-mono);">${vendorId}</td>
           <td style="font-family: var(--font-mono);">${productId}</td>
           <td><span class="badge badge-supported">Paired</span></td>
+          <td>
+            <button class="btn btn-small btn-violet" onclick="testPrintSerial(${index})">🖨️ Test Print</button>
+          </td>
         </tr>
       `;
     });
   } catch (error) {
     console.error('Error listing Serial ports:', error);
+  }
+}
+
+// ESC/POS Receipt Command Byte Builder
+function getEscPosTestData() {
+  const encoder = new TextEncoder();
+  const init = new Uint8Array([0x1B, 0x40]); // ESC @ (Initialize)
+  const center = new Uint8Array([0x1B, 0x61, 0x01]); // ESC a 1 (Align center)
+  const doubleSize = new Uint8Array([0x1D, 0x21, 0x11]); // GS ! 0x11 (Double height + double width text)
+  const title = encoder.encode("TEST PRINT\n\n");
+  const normalSize = new Uint8Array([0x1D, 0x21, 0x00]); // GS ! 0x00 (Normal text size)
+  const left = new Uint8Array([0x1B, 0x61, 0x00]); // ESC a 0 (Align left)
+  
+  const bodyText = 
+    "--------------------------------\n" +
+    "Web Hardware Test Utility\n" +
+    "Biometrics & Thermal Spool\n" +
+    `Date: ${new Date().toLocaleString()}\n` +
+    "Interface: WebUSB / WebSerial\n" +
+    "Status: Printing Successful!\n" +
+    "--------------------------------\n\n\n\n";
+  const body = encoder.encode(bodyText);
+  const cut = new Uint8Array([0x1D, 0x56, 0x42, 0x00]); // GS V 66 0 (Feed and Paper Cut)
+  
+  // Combine all parts
+  const totalLength = init.length + center.length + doubleSize.length + title.length + normalSize.length + left.length + body.length + cut.length;
+  const combined = new Uint8Array(totalLength);
+  
+  let offset = 0;
+  combined.set(init, offset); offset += init.length;
+  combined.set(center, offset); offset += center.length;
+  combined.set(doubleSize, offset); offset += doubleSize.length;
+  combined.set(title, offset); offset += title.length;
+  combined.set(normalSize, offset); offset += normalSize.length;
+  combined.set(left, offset); offset += left.length;
+  combined.set(body, offset); offset += body.length;
+  combined.set(cut, offset); offset += cut.length;
+  
+  return combined;
+}
+
+// Print via WebUSB
+async function testPrintUsb(deviceIndex) {
+  if (!navigator.usb) return;
+  try {
+    const devices = await navigator.usb.getDevices();
+    const device = devices[deviceIndex];
+    if (!device) {
+      log('[USB] Device not found in paired list.', 'error');
+      return;
+    }
+    
+    log(`[USB] Connecting to ${device.productName}...`, 'info');
+    await device.open();
+    
+    // Select configurations (usually configuration 1 is the default)
+    await device.selectConfiguration(1);
+    
+    // Find bulk OUT endpoint for raw printing
+    let interfaceNum = 0;
+    let endpointNum = 0;
+    
+    const interfaces = device.configuration.interfaces;
+    for (const iface of interfaces) {
+      for (const alternate of iface.alternates) {
+        if (alternate.interfaceClass === 7) { // Printer Class
+          interfaceNum = iface.interfaceNumber;
+          for (const endpoint of alternate.endpoints) {
+            if (endpoint.direction === 'out' && endpoint.type === 'bulk') {
+              endpointNum = endpoint.endpointNumber;
+              break;
+            }
+          }
+        }
+      }
+      if (endpointNum) break;
+    }
+    
+    // Fallback if device configuration didn't explicitly tag class 7
+    if (!endpointNum) {
+      for (const iface of interfaces) {
+        for (const alternate of iface.alternates) {
+          for (const endpoint of alternate.endpoints) {
+            if (endpoint.direction === 'out' && endpoint.type === 'bulk') {
+              interfaceNum = iface.interfaceNumber;
+              endpointNum = endpoint.endpointNumber;
+              break;
+            }
+          }
+        }
+        if (endpointNum) break;
+      }
+    }
+    
+    if (!endpointNum) {
+      throw new Error("Could not detect Bulk OUT USB endpoint on this receipt printer.");
+    }
+    
+    log(`[USB] Claiming Interface: ${interfaceNum}, Endpoint: ${endpointNum}...`, 'system');
+    await device.claimInterface(interfaceNum);
+    
+    const printData = getEscPosTestData();
+    log(`[USB] Sending ESC/POS print command payload (${printData.length} bytes)...`, 'system');
+    await device.transferOut(endpointNum, printData);
+    
+    log('[USB] Print commands transferred. Releasing interface...', 'system');
+    await device.releaseInterface(interfaceNum);
+    await device.close();
+    
+    log('[USB-SUCCESS] Receipt printed successfully!', 'success');
+  } catch (error) {
+    log(`[USB-ERROR] WebUSB printing failed: ${error.message}`, 'error');
+  }
+}
+
+// Print via Web Serial
+async function testPrintSerial(portIndex) {
+  if (!navigator.serial) return;
+  try {
+    const ports = await navigator.serial.getPorts();
+    const port = ports[portIndex];
+    if (!port) {
+      log('[SERIAL] Serial Port not found in paired list.', 'error');
+      return;
+    }
+    
+    log(`[SERIAL] Opening Serial Port (BaudRate: 9600)...`, 'info');
+    await port.open({ baudRate: 9600 });
+    
+    const writer = port.writable.getWriter();
+    const printData = getEscPosTestData();
+    
+    log(`[SERIAL] Sending ESC/POS print command payload (${printData.length} bytes)...`, 'system');
+    await writer.write(printData);
+    
+    log('[SERIAL] Releasing writer lock...', 'system');
+    writer.releaseLock();
+    
+    log('[SERIAL] Closing Serial Port...', 'system');
+    await port.close();
+    
+    log('[SERIAL-SUCCESS] Receipt printed successfully!', 'success');
+  } catch (error) {
+    log(`[SERIAL-ERROR] Web Serial printing failed: ${error.message}`, 'error');
   }
 }
 
