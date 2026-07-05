@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebAuthn Biometric Tester Playground</title>
+  <!-- Google Fonts: Outfit (modern/sleek UI) & JetBrains Mono (monospaced for code logs) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <!-- CSS Styling -->
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- Ambient background glow elements -->
+  <div class="glow-bg glow-cyan"></div>
+  <div class="glow-bg glow-violet"></div>
+
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="header-logo">
+        <span class="logo-icon">🛡️</span>
+        <div class="logo-text">
+          <h1>WebAuthn Playground</h1>
+          <p>Biometric Authentication Testing Suite (Face ID, Touch ID, Windows Hello)</p>
+        </div>
+      </div>
+      <div class="system-status">
+        <div class="status-indicator online" id="api-status-dot"></div>
+        <span id="api-status-text">Local Mock Active</span>
+      </div>
+    </header>
+
+    <div class="app-grid">
+      <!-- Sidebar Panel: Configurations & Info -->
+      <aside class="sidebar-panel">
+        <div class="glass-card config-card">
+          <div class="card-header">
+            <h3>⚙️ WebAuthn Settings</h3>
+          </div>
+          <div class="card-body">
+            <div class="form-group">
+              <label for="config-attachment">Authenticator Attachment</label>
+              <select id="config-attachment" class="custom-select">
+                <option value="any">Any Authenticator (Default)</option>
+                <option value="platform" selected>Platform (Fingerprint, Face ID, Windows Hello)</option>
+                <option value="cross-platform">Cross-Platform (USB Security Key / YubiKey)</option>
+              </select>
+              <small class="help-text">Use "Platform" to force built-in biometrics like Touch ID or Face ID.</small>
+            </div>
+
+            <div class="form-group">
+              <label for="config-verification">User Verification</label>
+              <select id="config-verification" class="custom-select">
+                <option value="required" selected>Required (PIN or Biometric validation MUST occur)</option>
+                <option value="preferred">Preferred (Perform verification if possible)</option>
+                <option value="discouraged">Discouraged (Do not prompt verification)</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="config-resident">Resident Key / Discoverable Credential</label>
+              <select id="config-resident" class="custom-select">
+                <option value="preferred" selected>Preferred (Store credential on device if supported)</option>
+                <option value="required">Required (Must store credential on device)</option>
+                <option value="discouraged">Discouraged (Do not store on device)</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="config-attestation">Attestation Conveyance Preference</label>
+              <select id="config-attestation" class="custom-select">
+                <option value="none" selected>None (No device validation needed)</option>
+                <option value="direct">Direct (Request device model certification)</option>
+                <option value="indirect">Indirect (Request anonymized certificate)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="glass-card status-card">
+          <div class="card-header">
+            <h3>📱 WebAuthn Browser Support</h3>
+          </div>
+          <div class="card-body">
+            <ul class="support-list">
+              <li>
+                <span>WebAuthn API Support:</span>
+                <span id="support-webauthn" class="badge badge-checking">Checking...</span>
+              </li>
+              <li>
+                <span>Platform Authenticator:</span>
+                <span id="support-platform" class="badge badge-checking">Checking...</span>
+              </li>
+              <li>
+                <span>Secure Context (HTTPS/localhost):</span>
+                <span id="support-secure" class="badge badge-checking">Checking...</span>
+              </li>
+              <li>
+                <span>WebUSB (USB Printers):</span>
+                <span id="support-usb" class="badge badge-checking">Checking...</span>
+              </li>
+              <li>
+                <span>Web Serial (COM Ports):</span>
+                <span id="support-serial" class="badge badge-checking">Checking...</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Main Panel: Workbench and Logs -->
+      <main class="main-content">
+        <div class="tabs-container">
+          <button class="tab-btn active" data-tab="workbench">🧪 Test Workbench</button>
+          <button class="tab-btn" data-tab="visualizer">🔄 Flow Visualizer</button>
+          <button class="tab-btn" data-tab="database" id="tab-db-btn">🗄️ Database Inspector</button>
+          <button class="tab-btn" data-tab="hardware" id="tab-hw-btn">🔌 Hardware & Printers</button>
+        </div>
+
+        <!-- TAB CONTENT: WORKBENCH -->
+        <div class="tab-pane active" id="tab-workbench">
+          <div class="glass-card primary-card">
+            <div class="card-body">
+              <div class="auth-box-grid">
+                <!-- Registration Section -->
+                <div class="auth-section">
+                  <div class="section-title">
+                    <span class="step-num">1</span>
+                    <h2>Register Credential</h2>
+                  </div>
+                  <p class="section-desc">Create a new biometric profile. The browser will prompt for your fingerprint or Face ID to generate a public/private key pair.</p>
+                  
+                  <div class="form-group">
+                    <input type="text" id="reg-username" class="custom-input" placeholder="Enter username (e.g. user@domain.com)">
+                  </div>
+
+                  <button id="btn-register" class="btn btn-cyan">
+                    <span class="btn-icon">➕</span> Register Fingerprint/Face ID
+                  </button>
+                </div>
+
+                <div class="section-divider"></div>
+
+                <!-- Authentication Section -->
+                <div class="auth-section">
+                  <div class="section-title font-violet">
+                    <span class="step-num bg-violet">2</span>
+                    <h2>Authenticate User</h2>
+                  </div>
+                  <p class="section-desc">Login with your registered biometrics. The browser will search for credentials and prompt for verification.</p>
+                  
+                  <div class="form-group">
+                    <input type="text" id="login-username" class="custom-input" placeholder="Enter registered username">
+                  </div>
+
+                  <button id="btn-login" class="btn btn-violet">
+                    <span class="btn-icon">🔑</span> Login via Biometrics
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB CONTENT: VISUALIZER -->
+        <div class="tab-pane" id="tab-visualizer">
+          <div class="glass-card">
+            <div class="card-header">
+              <h3>🔄 WebAuthn Step-by-Step Message Flow</h3>
+            </div>
+            <div class="card-body">
+              <div class="visualizer-flow">
+                <!-- Actor: User Client App -->
+                <div class="flow-actor" id="actor-client">
+                  <div class="actor-icon">💻</div>
+                  <div class="actor-name">Client App (Browser)</div>
+                </div>
+
+                <!-- Channel 1 -->
+                <div class="flow-arrow" id="flow-arrow-options">
+                  <span class="arrow-label">1. Request options</span>
+                  <div class="arrow-line right"></div>
+                </div>
+
+                <!-- Actor: RP Server -->
+                <div class="flow-actor" id="actor-server">
+                  <div class="actor-icon">🖥️</div>
+                  <div class="actor-name">Relying Party (Local Mock)</div>
+                </div>
+
+                <!-- Channel 2 (Down and Left to Authenticator) -->
+                <div class="flow-arrow" id="flow-arrow-create">
+                  <span class="arrow-label">2. navigator.credentials.create()</span>
+                  <div class="arrow-line down-left"></div>
+                </div>
+
+                <!-- Actor: Authenticator -->
+                <div class="flow-actor" id="actor-authenticator">
+                  <div class="actor-icon">🆔</div>
+                  <div class="actor-name">Biometric Authenticator</div>
+                </div>
+
+                <!-- Channel 3 (Up and Right response) -->
+                <div class="flow-arrow" id="flow-arrow-response">
+                  <span class="arrow-label">3. Return Public Key Attestation</span>
+                  <div class="arrow-line up-right"></div>
+                </div>
+
+                <!-- Channel 4 (Verification) -->
+                <div class="flow-arrow" id="flow-arrow-verify">
+                  <span class="arrow-label">4. Verify response & store</span>
+                  <div class="arrow-line right-double"></div>
+                </div>
+              </div>
+              <div class="flow-step-details" id="flow-step-desc">
+                Select an operation (Register or Login) on the Workbench tab to trace the visual message flow in real time!
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB CONTENT: DATABASE -->
+        <div class="tab-pane" id="tab-database">
+          <div class="glass-card">
+            <div class="card-header header-with-btn">
+              <h3>🗄️ Registered Credentials Database (Browser LocalStorage)</h3>
+              <button id="btn-db-reset" class="btn btn-small btn-danger">🗑️ Reset Database</button>
+            </div>
+            <div class="card-body">
+              <div class="table-responsive">
+                <table class="db-table" id="db-table-element">
+                  <thead>
+                    <tr>
+                      <th>User ID</th>
+                      <th>Username</th>
+                      <th>Credential ID</th>
+                      <th>Public Key (Base64URL)</th>
+                      <th>Sign Counter</th>
+                      <th>Transports</th>
+                      <th>Created</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td colspan="7" class="empty-table">No credentials registered yet. Use the workbench to register.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB CONTENT: HARDWARE & PRINTERS -->
+        <div class="tab-pane" id="tab-hardware">
+          <div class="glass-card">
+            <div class="card-header">
+              <h3>🔌 WebUSB & Web Serial Printer Port Discoverer</h3>
+            </div>
+            <div class="card-body">
+              <p class="section-desc" style="margin-bottom: 1.5rem;">
+                Standard web browsers cannot access the operating system's installed printer list (like the Windows Spooler) directly due to sandboxed security rules. 
+                However, browsers can connect directly to hardware interfaces like <strong>WebUSB</strong> and <strong>Web Serial</strong> to communicate with thermal POS receipt printers.
+              </p>
+
+              <div class="auth-box-grid">
+                <!-- USB Section -->
+                <div class="auth-section">
+                  <div class="section-title">
+                    <span class="step-num">U</span>
+                    <h2>WebUSB Device Scanner</h2>
+                  </div>
+                  <p class="section-desc">Search and pair directly with connected USB receipt printers. This uses the browser's native WebUSB API.</p>
+                  
+                  <button id="btn-scan-usb" class="btn btn-cyan">
+                    <span class="btn-icon">🔍</span> Scan & Pair USB Printer
+                  </button>
+
+                  <div style="margin-top: 1rem;">
+                    <h4 style="font-size: 0.9rem; margin-bottom: 0.5rem; color: var(--text-secondary);">Paired USB Devices:</h4>
+                    <div class="table-responsive">
+                      <table class="db-table" id="usb-devices-table">
+                        <thead>
+                          <tr>
+                            <th>Device Name</th>
+                            <th>Vendor ID</th>
+                            <th>Product ID</th>
+                            <th>Manufacturer</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr>
+                            <td colspan="4" class="empty-table" style="padding: 1.5rem;">No USB devices paired. Click scan to search.</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="section-divider"></div>
+
+                <!-- Serial Section -->
+                <div class="auth-section">
+                  <div class="section-title font-violet">
+                    <span class="step-num bg-violet">S</span>
+                    <h2>Web Serial Port Scanner</h2>
+                  </div>
+                  <p class="section-desc">Search and pair directly with serial ports (COM ports) used by serial printers. This uses the Web Serial API.</p>
+                  
+                  <button id="btn-scan-serial" class="btn btn-violet">
+                    <span class="btn-icon">🔌</span> Scan & Pair Serial Port
+                  </button>
+
+                  <div style="margin-top: 1rem;">
+                    <h4 style="font-size: 0.9rem; margin-bottom: 0.5rem; color: var(--text-secondary);">Available Serial Ports:</h4>
+                    <div class="table-responsive">
+                      <table class="db-table" id="serial-ports-table">
+                        <thead>
+                          <tr>
+                            <th>Port Index</th>
+                            <th>USB Vendor ID</th>
+                            <th>USB Product ID</th>
+                            <th>Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr>
+                            <td colspan="4" class="empty-table" style="padding: 1.5rem;">No serial ports paired. Click scan to search.</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Log & console component (Always Visible at bottom of main content) -->
+        <div class="glass-card console-card">
+          <div class="card-header header-with-btn">
+            <h3>🖥️ WebAuthn Live Console Log & JSON Inspector</h3>
+            <button id="btn-clear-logs" class="btn btn-small btn-secondary">Clear Logs</button>
+          </div>
+          <div class="card-body console-body">
+            <div class="console-split">
+              <!-- Logs text -->
+              <div class="console-logs" id="console-logs-output">
+                <div class="log-line system">[SYSTEM] Ready. Waiting for user actions...</div>
+              </div>
+
+              <!-- JSON Viewer -->
+              <div class="json-inspector">
+                <div class="json-header">
+                  <span class="json-title" id="json-title-text">JSON Payload Viewer</span>
+                  <span class="json-copy-btn" id="btn-copy-json">Copy JSON</span>
+                </div>
+                <pre class="json-output" id="json-output-viewer">Select a step or log entry to view the raw JSON payload details here...</pre>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
